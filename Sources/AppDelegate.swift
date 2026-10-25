@@ -25,6 +25,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         checkAccessibilityPermissions()
     }
 
+    public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
+    }
+
     private func checkAccessibilityPermissions() {
         let isTrusted = AXIsProcessTrusted()
         if !isTrusted {
