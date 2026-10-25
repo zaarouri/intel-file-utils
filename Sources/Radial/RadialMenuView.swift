@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CoreGraphics
 
 public final class RadialMenuView: NSView {
     public var mode: RadialMode = .conversions {
@@ -24,11 +25,13 @@ public final class RadialMenuView: NSView {
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         registerForDraggedTypes([.fileURL])
+        wantsLayer = true
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         registerForDraggedTypes([.fileURL])
+        wantsLayer = true
     }
 
     public override var isFlipped: Bool { false }
@@ -64,7 +67,7 @@ public final class RadialMenuView: NSView {
                 }
                 NSSound(named: "Tink")?.play()
             } else {
-                centerTitle = mode.rawValue.uppercased()
+                centerTitle = mode.title
                 let files = RadialWindowController.shared.activeFiles
                 centerSubtitle = files.count == 1 ? files[0].lastPathComponent : "\(files.count) files"
             }
@@ -84,7 +87,7 @@ public final class RadialMenuView: NSView {
 
     public override func draggingExited(_ sender: NSDraggingInfo?) {
         selectedIndex = nil
-        centerTitle = mode.rawValue.uppercased()
+        centerTitle = mode.title
         let files = RadialWindowController.shared.activeFiles
         centerSubtitle = files.count == 1 ? files[0].lastPathComponent : "\(files.count) files"
     }
@@ -114,6 +117,7 @@ public final class RadialMenuView: NSView {
         }
     }
 
+    // MARK: - Drawing & Graphics
     public override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
@@ -121,39 +125,25 @@ public final class RadialMenuView: NSView {
         let center = CGPoint(x: bounds.midX, y: bounds.midY)
         let count = items.count
 
-        // 1. Draw Glassmorphism Outer Ring Backdrop
+        // 1. Draw Outer Glass Backdrop Disc with Blur & Shadow
         ctx.saveGState()
-        let ringPath = CGMutablePath()
-        ringPath.addArc(center: center, radius: RadialGeometry.innerRadius - 4, startAngle: 0, endAngle: 2 * .pi, clockwise: false)
-        ringPath.addArc(center: center, radius: RadialGeometry.outerRadius + 8, startAngle: 0, endAngle: 2 * .pi, clockwise: true)
-        
-        ctx.addPath(ringPath)
-        ctx.setFillColor(NSColor(white: 1.0, alpha: 0.12).cgColor)
-        ctx.fillPath()
-        ctx.restoreGState()
-
-        // 2. Draw Center Disc
-        ctx.saveGState()
-        let centerRect = CGRect(
-            x: center.x - RadialGeometry.innerRadius + 4,
-            y: center.y - RadialGeometry.innerRadius + 4,
-            width: (RadialGeometry.innerRadius - 4) * 2,
-            height: (RadialGeometry.innerRadius - 4) * 2
+        let backdropRect = CGRect(
+            x: center.x - RadialGeometry.outerRadius - 8,
+            y: center.y - RadialGeometry.outerRadius - 8,
+            width: (RadialGeometry.outerRadius + 8) * 2,
+            height: (RadialGeometry.outerRadius + 8) * 2
         )
-        let centerPath = CGPath(ellipseIn: centerRect, transform: nil)
-        
-        ctx.setShadow(offset: CGSize(width: 0, height: -2), blur: 8, color: NSColor(white: 0, alpha: 0.25).cgColor)
-        ctx.addPath(centerPath)
-        ctx.setFillColor(NSColor(white: 0.18, alpha: 0.88).cgColor)
-        ctx.fillPath()
+        ctx.setShadow(offset: CGSize(width: 0, height: -6), blur: 24, color: NSColor(white: 0, alpha: 0.50).cgColor)
+        ctx.setFillColor(NSColor(red: 0.08, green: 0.09, blue: 0.12, alpha: 0.88).cgColor)
+        ctx.fillEllipse(in: backdropRect)
 
-        ctx.addPath(centerPath)
-        ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.2).cgColor)
+        // Outer rim highlight
+        ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.14).cgColor)
         ctx.setLineWidth(1.5)
-        ctx.strokePath()
+        ctx.strokeEllipse(in: backdropRect)
         ctx.restoreGState()
 
-        // 3. Draw Petals
+        // 2. Draw Petals
         for i in 0..<count {
             let isSelected = (selectedIndex == i)
             let petalPath = RadialGeometry.petalPath(index: i, count: count, center: center)
@@ -162,33 +152,93 @@ public final class RadialMenuView: NSView {
             ctx.addPath(petalPath)
 
             if isSelected {
-                ctx.setShadow(offset: CGSize(width: 0, height: 0), blur: 12, color: NSColor.systemOrange.withAlphaComponent(0.6).cgColor)
-                ctx.setFillColor(NSColor(red: 1.0, green: 0.45, blue: 0.1, alpha: 0.95).cgColor)
+                // Electric Orange / Amber Gradient Glow
+                ctx.setShadow(offset: CGSize(width: 0, height: 0), blur: 16, color: NSColor(red: 1.0, green: 0.42, blue: 0.05, alpha: 0.85).cgColor)
+                ctx.setFillColor(NSColor(red: 1.0, green: 0.44, blue: 0.06, alpha: 0.96).cgColor)
                 ctx.fillPath()
 
                 ctx.addPath(petalPath)
-                ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.9).cgColor)
-                ctx.setLineWidth(2.0)
+                ctx.setStrokeColor(NSColor.white.cgColor)
+                ctx.setLineWidth(2.2)
                 ctx.strokePath()
             } else {
-                ctx.setFillColor(NSColor(white: 0.96, alpha: 0.85).cgColor)
+                // Sleek Slate Glass Petal
+                ctx.setFillColor(NSColor(red: 0.16, green: 0.18, blue: 0.23, alpha: 0.82).cgColor)
                 ctx.fillPath()
 
                 ctx.addPath(petalPath)
-                ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.4).cgColor)
+                ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.15).cgColor)
                 ctx.setLineWidth(1.0)
                 ctx.strokePath()
             }
             ctx.restoreGState()
 
-            // 4. Draw Petal Content
+            // Petal Icon & Text
             let item = items[i]
             let iconPos = RadialGeometry.iconCenter(for: i, count: count, center: center)
             drawPetalContent(item: item, index: i, at: iconPos, isSelected: isSelected)
         }
 
-        // 5. Draw Center Information
-        drawCenterText(center: center)
+        // 3. Draw Center Hub Disc
+        drawCenterHub(center: center)
+    }
+
+    private func drawCenterHub(center: CGPoint) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+
+        ctx.saveGState()
+        let r = RadialGeometry.innerRadius - 4
+        let hubRect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
+
+        // Shadow & Background
+        ctx.setShadow(offset: CGSize(width: 0, height: -3), blur: 12, color: NSColor(white: 0, alpha: 0.45).cgColor)
+        ctx.setFillColor(NSColor(red: 0.12, green: 0.13, blue: 0.17, alpha: 0.96).cgColor)
+        ctx.fillEllipse(in: hubRect)
+
+        // Hub border
+        ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.22).cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.strokeEllipse(in: hubRect)
+        ctx.restoreGState()
+
+        // Mode SF Symbol Icon at top of hub
+        let symName = mode.symbol
+        if let baseImg = NSImage(systemSymbolName: symName, accessibilityDescription: nil) {
+            let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .bold)
+            let iconImg = baseImg.withSymbolConfiguration(config) ?? baseImg
+            let iconSize: CGFloat = 16
+            let iconRect = CGRect(x: center.x - iconSize / 2, y: center.y + 12, width: iconSize, height: iconSize)
+
+            ctx.saveGState()
+            iconImg.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 0.85)
+            ctx.restoreGState()
+        }
+
+        // Title & Subtitle text
+        let titleFont = NSFont.systemFont(ofSize: 10.5, weight: .heavy)
+        let subFont = NSFont.systemFont(ofSize: 8.5, weight: .medium)
+
+        let titleStr = NSAttributedString(string: centerTitle, attributes: [
+            .font: titleFont,
+            .foregroundColor: NSColor.white
+        ])
+        let subStr = NSAttributedString(string: centerSubtitle, attributes: [
+            .font: subFont,
+            .foregroundColor: NSColor(white: 0.78, alpha: 0.90)
+        ])
+
+        let titleSize = titleStr.size()
+        let subSize = subStr.size()
+
+        let titleY = center.y - 4
+        let titleRect = CGRect(x: center.x - titleSize.width / 2, y: titleY, width: titleSize.width, height: titleSize.height)
+        titleStr.draw(in: titleRect)
+
+        if !centerSubtitle.isEmpty {
+            let subY = titleY - subSize.height - 2
+            let subRect = CGRect(x: center.x - subSize.width / 2, y: subY, width: subSize.width, height: subSize.height)
+            subStr.draw(in: subRect)
+        }
     }
 
     private func drawPetalContent(item: String, index: Int, at pos: CGPoint, isSelected: Bool) {
@@ -214,21 +264,25 @@ public final class RadialMenuView: NSView {
             }
         }
 
-        let textColor = isSelected ? NSColor.white : NSColor(white: 0.15, alpha: 0.95)
+        let textColor = isSelected ? NSColor.white : NSColor(white: 0.92, alpha: 0.95)
 
-        if let symbol = symbolName, let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
+        if let symbol = symbolName, let baseImg = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
             let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
-            let symImg = img.withSymbolConfiguration(config) ?? img
+            let iconImg = baseImg.withSymbolConfiguration(config) ?? baseImg
             let imgSize = CGSize(width: 18, height: 18)
-            let imgRect = CGRect(x: pos.x - imgSize.width / 2, y: pos.y - 2, width: imgSize.width, height: imgSize.height)
-            
-            symImg.lockFocus()
-            textColor.set()
-            let r = NSRect(origin: .zero, size: symImg.size)
-            r.fill(using: .sourceAtop)
-            symImg.unlockFocus()
-            
-            symImg.draw(in: imgRect)
+            let imgRect = CGRect(x: pos.x - imgSize.width / 2, y: pos.y - 1, width: imgSize.width, height: imgSize.height)
+
+            // Render symbol cleanly with proper tint
+            if let cgImage = iconImg.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+                ctx.saveGState()
+                ctx.clip(to: imgRect, mask: cgImage)
+                ctx.setFillColor(textColor.cgColor)
+                ctx.fill(imgRect)
+                ctx.restoreGState()
+            } else {
+                iconImg.draw(in: imgRect)
+            }
 
             let font = NSFont.systemFont(ofSize: 9.5, weight: .bold)
             let attrs: [NSAttributedString.Key: Any] = [
@@ -237,7 +291,7 @@ public final class RadialMenuView: NSView {
             ]
             let str = NSAttributedString(string: title, attributes: attrs)
             let strSize = str.size()
-            let strRect = CGRect(x: pos.x - strSize.width / 2, y: pos.y - 13, width: strSize.width, height: strSize.height)
+            let strRect = CGRect(x: pos.x - strSize.width / 2, y: pos.y - 14, width: strSize.width, height: strSize.height)
             str.draw(in: strRect)
         } else {
             let font = NSFont.systemFont(ofSize: 12.0, weight: .heavy)
@@ -249,34 +303,6 @@ public final class RadialMenuView: NSView {
             let strSize = str.size()
             let strRect = CGRect(x: pos.x - strSize.width / 2, y: pos.y - strSize.height / 2, width: strSize.width, height: strSize.height)
             str.draw(in: strRect)
-        }
-    }
-
-    private func drawCenterText(center: CGPoint) {
-        let titleFont = NSFont.systemFont(ofSize: 10.5, weight: .bold)
-        let subFont = NSFont.systemFont(ofSize: 8.5, weight: .medium)
-
-        let titleStr = NSAttributedString(string: centerTitle, attributes: [
-            .font: titleFont,
-            .foregroundColor: NSColor.white
-        ])
-        let subStr = NSAttributedString(string: centerSubtitle, attributes: [
-            .font: subFont,
-            .foregroundColor: NSColor(white: 0.8, alpha: 0.9)
-        ])
-
-        let titleSize = titleStr.size()
-        let subSize = subStr.size()
-        let totalH = titleSize.height + (centerSubtitle.isEmpty ? 0 : subSize.height + 2)
-
-        let titleY = center.y - (totalH / 2) + (centerSubtitle.isEmpty ? 0 : subSize.height + 2)
-        let titleRect = CGRect(x: center.x - titleSize.width / 2, y: titleY, width: titleSize.width, height: titleSize.height)
-        titleStr.draw(in: titleRect)
-
-        if !centerSubtitle.isEmpty {
-            let subY = titleY - subSize.height - 2
-            let subRect = CGRect(x: center.x - subSize.width / 2, y: subY, width: subSize.width, height: subSize.height)
-            subStr.draw(in: subRect)
         }
     }
 }

@@ -9,16 +9,18 @@ public final class FloatShelfWindowController: NSWindowController {
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 200, y: 300, width: 380, height: 360),
+            contentRect: NSRect(x: 200, y: 300, width: 420, height: 380),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        window.title = "floating-utils-intel-mac Shelf"
+        window.title = "Floating Shelf"
         window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.minSize = NSSize(width: 380, height: 320)
 
         super.init(window: window)
         window.contentView = shelfView
@@ -32,12 +34,20 @@ public final class FloatShelfWindowController: NSWindowController {
         shelfView.addFiles(urls)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }
 
-public final class FloatShelfView: NSView {
+public final class FloatShelfView: NSVisualEffectView {
     private var files: [URL] = []
-    private let titleLabel = NSTextField(labelWithString: "Drop files here or hold Shift/⌘/⌃ while dragging")
+
+    private let headerLabel = NSTextField(labelWithString: "Floating Shelf")
+    private let statusLabel = NSTextField(labelWithString: "0 items staged")
+    private let emptyPlaceholder = NSStackView()
+
+    private let scrollView = NSScrollView()
+    private let itemsStack = NSStackView()
+
     private let cropWebPButton = NSButton()
     private let pdfButton = NSButton()
     private let resizeButton = NSButton()
@@ -54,90 +64,236 @@ public final class FloatShelfView: NSView {
     }
 
     private func setupView() {
-        registerForDraggedTypes([.fileURL])
+        material = .hudWindow
+        blendingMode = .behindWindow
+        state = .active
         wantsLayer = true
-        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
-        layer?.cornerRadius = 12
+        layer?.cornerRadius = 16
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor(white: 1.0, alpha: 0.16).cgColor
 
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.alignment = .center
-        titleLabel.textColor = .secondaryLabelColor
-        titleLabel.font = .systemFont(ofSize: 12.5, weight: .medium)
-        addSubview(titleLabel)
+        registerForDraggedTypes([.fileURL])
 
-        configureButton(cropWebPButton, title: "Freeform Crop & WebP...", action: #selector(cropWebPFromShelf))
-        configureButton(pdfButton, title: "Convert to PDF", action: #selector(createPDFFromShelf))
-        configureButton(resizeButton, title: "Resize & Edit...", action: #selector(resizeFromShelf))
+        // 1. Header
+        headerLabel.translatesAutoresizingMaskIntoConstraints = false
+        headerLabel.font = .systemFont(ofSize: 13, weight: .heavy)
+        headerLabel.textColor = .white
+        addSubview(headerLabel)
+
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        statusLabel.textColor = NSColor(white: 0.75, alpha: 0.9)
+        addSubview(statusLabel)
 
         clearButton.translatesAutoresizingMaskIntoConstraints = false
-        clearButton.title = "Clear Shelf"
+        clearButton.title = "Clear All"
         clearButton.bezelStyle = .recessed
+        clearButton.font = .systemFont(ofSize: 11, weight: .semibold)
         clearButton.target = self
         clearButton.action = #selector(clearShelf)
-        clearButton.isHidden = true
         addSubview(clearButton)
 
+        // 2. Empty State View
+        emptyPlaceholder.orientation = .vertical
+        emptyPlaceholder.alignment = .centerX
+        emptyPlaceholder.spacing = 8
+        emptyPlaceholder.translatesAutoresizingMaskIntoConstraints = false
+
+        let emptyIcon = NSImageView()
+        emptyIcon.image = NSImage(systemSymbolName: "square.dashed", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 32, weight: .light))
+        emptyIcon.contentTintColor = NSColor(white: 0.6, alpha: 0.7)
+
+        let emptyText = NSTextField(labelWithString: "Drop files here to stage across desktops\nor drag files & tap ⌃ Control")
+        emptyText.font = .systemFont(ofSize: 11.5, weight: .medium)
+        emptyText.alignment = .center
+        emptyText.textColor = NSColor(white: 0.65, alpha: 0.8)
+
+        emptyPlaceholder.addArrangedSubview(emptyIcon)
+        emptyPlaceholder.addArrangedSubview(emptyText)
+        addSubview(emptyPlaceholder)
+
+        // 3. Staged Items Scroll List
+        itemsStack.orientation = .vertical
+        itemsStack.spacing = 6
+        itemsStack.translatesAutoresizingMaskIntoConstraints = false
+        itemsStack.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.documentView = itemsStack
+        addSubview(scrollView)
+
+        // 4. Action Dock
+        let actionDock = NSStackView()
+        actionDock.orientation = .horizontal
+        actionDock.distribution = .fillEqually
+        actionDock.spacing = 8
+        actionDock.translatesAutoresizingMaskIntoConstraints = false
+
+        configureActionBtn(cropWebPButton, title: "Crop & WebP", symbol: "crop", action: #selector(cropWebPFromShelf))
+        configureActionBtn(pdfButton, title: "To PDF", symbol: "doc.badge.plus", action: #selector(createPDFFromShelf))
+        configureActionBtn(resizeButton, title: "Resize & Edit", symbol: "slider.horizontal.3", action: #selector(resizeFromShelf))
+
+        actionDock.addArrangedSubview(cropWebPButton)
+        actionDock.addArrangedSubview(pdfButton)
+        actionDock.addArrangedSubview(resizeButton)
+        addSubview(actionDock)
+
         NSLayoutConstraint.activate([
-            titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 40),
-            titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+            headerLabel.topAnchor.constraint(equalTo: topAnchor, constant: 18),
+            headerLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
 
-            cropWebPButton.centerXAnchor.constraint(equalTo: centerXAnchor),
-            cropWebPButton.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
-            cropWebPButton.widthAnchor.constraint(equalToConstant: 220),
+            statusLabel.centerYAnchor.constraint(equalTo: headerLabel.centerYAnchor),
+            statusLabel.leadingAnchor.constraint(equalTo: headerLabel.trailingAnchor, constant: 8),
 
-            pdfButton.centerXAnchor.constraint(equalTo: centerXAnchor),
-            pdfButton.topAnchor.constraint(equalTo: cropWebPButton.bottomAnchor, constant: 8),
-            pdfButton.widthAnchor.constraint(equalToConstant: 220),
+            clearButton.centerYAnchor.constraint(equalTo: headerLabel.centerYAnchor),
+            clearButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
 
-            resizeButton.centerXAnchor.constraint(equalTo: centerXAnchor),
-            resizeButton.topAnchor.constraint(equalTo: pdfButton.bottomAnchor, constant: 8),
-            resizeButton.widthAnchor.constraint(equalToConstant: 220),
+            emptyPlaceholder.centerXAnchor.constraint(equalTo: centerXAnchor),
+            emptyPlaceholder.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -10),
+            emptyPlaceholder.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 20),
+            emptyPlaceholder.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
 
-            clearButton.centerXAnchor.constraint(equalTo: centerXAnchor),
-            clearButton.topAnchor.constraint(equalTo: resizeButton.bottomAnchor, constant: 14)
+            scrollView.topAnchor.constraint(equalTo: headerLabel.bottomAnchor, constant: 12),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            scrollView.bottomAnchor.constraint(equalTo: actionDock.topAnchor, constant: -12),
+
+            itemsStack.widthAnchor.constraint(equalTo: scrollView.widthAnchor, constant: -8),
+
+            actionDock.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            actionDock.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            actionDock.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
+            actionDock.heightAnchor.constraint(equalToConstant: 32)
         ])
+
+        updateUI()
     }
 
-    private func configureButton(_ btn: NSButton, title: String, action: Selector) {
-        btn.translatesAutoresizingMaskIntoConstraints = false
+    private func configureActionBtn(_ btn: NSButton, title: String, symbol: String, action: Selector) {
         btn.title = title
         btn.bezelStyle = .rounded
+        btn.font = .systemFont(ofSize: 11, weight: .bold)
+        btn.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        btn.imagePosition = .imageLeading
         btn.target = self
         btn.action = action
-        btn.isHidden = true
-        addSubview(btn)
     }
 
     public func addFiles(_ newFiles: [URL]) {
-        files.append(contentsOf: newFiles)
+        for url in newFiles where !files.contains(url) {
+            files.append(url)
+        }
+        rebuildItemsList()
+        updateUI()
+    }
+
+    private func rebuildItemsList() {
+        for sub in itemsStack.arrangedSubviews {
+            itemsStack.removeArrangedSubview(sub)
+            sub.removeFromSuperview()
+        }
+
+        for (idx, file) in files.enumerated() {
+            let row = makeFileChip(file: file, index: idx)
+            itemsStack.addArrangedSubview(row)
+        }
+    }
+
+    private func makeFileChip(file: URL, index: Int) -> NSView {
+        let chip = NSView()
+        chip.wantsLayer = true
+        chip.layer?.backgroundColor = NSColor(white: 0.18, alpha: 0.75).cgColor
+        chip.layer?.cornerRadius = 8
+        chip.layer?.borderWidth = 1
+        chip.layer?.borderColor = NSColor(white: 1.0, alpha: 0.12).cgColor
+
+        let iconView = NSImageView()
+        iconView.image = NSWorkspace.shared.icon(forFile: file.path)
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        let nameLabel = NSTextField(labelWithString: file.lastPathComponent)
+        nameLabel.font = .systemFont(ofSize: 11.5, weight: .semibold)
+        nameLabel.textColor = .white
+        nameLabel.lineBreakMode = .byTruncatingMiddle
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let sizeBytes = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber)?.intValue ?? 0
+        let sizeStr = ByteCountFormatter.string(fromByteCount: Int64(sizeBytes), countStyle: .file)
+        let sizeLabel = NSTextField(labelWithString: sizeStr)
+        sizeLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        sizeLabel.textColor = NSColor(white: 0.75, alpha: 0.9)
+        sizeLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let removeBtn = NSButton()
+        removeBtn.bezelStyle = .recessed
+        removeBtn.isBordered = false
+        removeBtn.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Remove file")
+        removeBtn.contentTintColor = NSColor(white: 0.65, alpha: 0.8)
+        removeBtn.tag = index
+        removeBtn.target = self
+        removeBtn.action = #selector(removeFileItem(_:))
+        removeBtn.translatesAutoresizingMaskIntoConstraints = false
+
+        chip.addSubview(iconView)
+        chip.addSubview(nameLabel)
+        chip.addSubview(sizeLabel)
+        chip.addSubview(removeBtn)
+
+        NSLayoutConstraint.activate([
+            chip.heightAnchor.constraint(equalToConstant: 34),
+
+            iconView.leadingAnchor.constraint(equalTo: chip.leadingAnchor, constant: 8),
+            iconView.centerYAnchor.constraint(equalTo: chip.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 20),
+            iconView.heightAnchor.constraint(equalToConstant: 20),
+
+            nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
+            nameLabel.centerYAnchor.constraint(equalTo: chip.centerYAnchor),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: sizeLabel.leadingAnchor, constant: -8),
+
+            sizeLabel.trailingAnchor.constraint(equalTo: removeBtn.leadingAnchor, constant: -6),
+            sizeLabel.centerYAnchor.constraint(equalTo: chip.centerYAnchor),
+
+            removeBtn.trailingAnchor.constraint(equalTo: chip.trailingAnchor, constant: -6),
+            removeBtn.centerYAnchor.constraint(equalTo: chip.centerYAnchor),
+            removeBtn.widthAnchor.constraint(equalToConstant: 18),
+            removeBtn.heightAnchor.constraint(equalToConstant: 18)
+        ])
+
+        return chip
+    }
+
+    @objc private func removeFileItem(_ sender: NSButton) {
+        let idx = sender.tag
+        guard idx >= 0 && idx < files.count else { return }
+        files.remove(at: idx)
+        rebuildItemsList()
         updateUI()
     }
 
     private func updateUI() {
-        if files.isEmpty {
-            titleLabel.stringValue = "Drop files here or hold Shift/⌘/⌃ while dragging"
-            cropWebPButton.isHidden = true
-            pdfButton.isHidden = true
-            resizeButton.isHidden = true
-            clearButton.isHidden = true
-        } else {
-            let hasImagesOrPDF = files.contains { url in
-                let ext = url.pathExtension.lowercased()
-                return ConversionMatrix.imageFormats.contains(ext) || ext == "pdf"
-            }
-            titleLabel.stringValue = "\(files.count) item(s) on shelf.\nChoose a quick tool or drag anywhere."
-            cropWebPButton.isHidden = !hasImagesOrPDF
-            pdfButton.title = files.count > 1 ? "Combine into PDF" : "Convert to PDF"
-            pdfButton.isHidden = !hasImagesOrPDF
-            resizeButton.isHidden = !hasImagesOrPDF
-            clearButton.isHidden = false
+        let count = files.count
+        statusLabel.stringValue = "\(count) item\(count == 1 ? "" : "s") staged"
+        clearButton.isHidden = (count == 0)
+        emptyPlaceholder.isHidden = (count > 0)
+        scrollView.isHidden = (count == 0)
+
+        let hasImagesOrPDF = files.contains { url in
+            let ext = url.pathExtension.lowercased()
+            return ConversionMatrix.imageFormats.contains(ext) || ext == "pdf"
         }
+        cropWebPButton.isEnabled = hasImagesOrPDF
+        pdfButton.isEnabled = hasImagesOrPDF
+        pdfButton.title = count > 1 ? "Combine PDF" : "To PDF"
+        resizeButton.isEnabled = hasImagesOrPDF
     }
 
     @objc private func clearShelf() {
         files.removeAll()
+        rebuildItemsList()
         updateUI()
     }
 
@@ -158,12 +314,20 @@ public final class FloatShelfView: NSView {
             do {
                 let finalURL = try FileConverterService.shared.createPDFFromImages(sources: currentFiles, destination: outURL)
                 await MainActor.run {
-                    self.notify(title: "Created PDF", message: finalURL.lastPathComponent, success: true)
+                    NotificationService.shared.notify(
+                        title: currentFiles.count > 1 ? "Created PDF from \(currentFiles.count) Images" : "Converted to PDF",
+                        message: finalURL.lastPathComponent,
+                        success: true
+                    )
                     NSWorkspace.shared.activateFileViewerSelecting([finalURL])
                 }
             } catch {
                 await MainActor.run {
-                    self.notify(title: "PDF Creation Failed", message: error.localizedDescription, success: false)
+                    NotificationService.shared.notify(
+                        title: "PDF Creation Failed",
+                        message: error.localizedDescription,
+                        success: false
+                    )
                 }
             }
         }
@@ -176,26 +340,23 @@ public final class FloatShelfView: NSView {
 
     // Drag and Drop destination handling
     public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        layer?.borderColor = NSColor.systemOrange.cgColor
+        layer?.borderWidth = 2.0
         return .copy
     }
 
+    public override func draggingExited(_ sender: NSDraggingInfo?) {
+        layer?.borderColor = NSColor(white: 1.0, alpha: 0.16).cgColor
+        layer?.borderWidth = 1.0
+    }
+
     public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        layer?.borderColor = NSColor(white: 1.0, alpha: 0.16).cgColor
+        layer?.borderWidth = 1.0
         guard let items = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
             return false
         }
         addFiles(items)
         return true
-    }
-
-    private func notify(title: String, message: String, success: Bool) {
-        let notif = NSUserNotification()
-        notif.title = title
-        notif.informativeText = message
-        NSUserNotificationCenter.default.deliver(notif)
-        if success {
-            NSSound(named: "Glass")?.play()
-        } else {
-            NSSound(named: "Basso")?.play()
-        }
     }
 }

@@ -11,48 +11,54 @@ public final class StatusItemController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem?.button else { return }
 
-        // Load custom logo
-        var iconLoaded = false
-        if let iconURL = Bundle.main.url(forResource: "menu_icon", withExtension: "png") ??
-                         Bundle.main.url(forResource: "menu_icon@2x", withExtension: "png") {
-            if let image = NSImage(contentsOf: iconURL) {
-                image.size = NSSize(width: 18, height: 18)
-                button.image = image
-                iconLoaded = true
-            }
+        if let image = loadMenuIcon() {
+            button.image = image
         } else {
-            let resPath = "/Users/mac/Desktop/TangerineIntel/Resources/menu_icon.png"
-            if let image = NSImage(contentsOfFile: resPath) {
-                image.size = NSSize(width: 18, height: 18)
-                button.image = image
-                iconLoaded = true
-            }
+            button.title = "⚡️"
         }
 
-        if !iconLoaded {
-            button.title = "🍊"
-        }
-
-        button.toolTip = "floating-utils-intel-mac — Drag file and tap Shift, ⌘, or ⌃"
-
+        button.toolTip = "Intel File Utils — Drag file & tap Shift (Convert), ⌘ (Tools), or ⌃ (Actions)"
         buildMenu()
     }
 
-    private func buildMenu() {
+    private func loadMenuIcon() -> NSImage? {
+        if let iconURL = Bundle.main.url(forResource: "menu_icon", withExtension: "png") ??
+                         Bundle.main.url(forResource: "menu_icon@2x", withExtension: "png"),
+           let image = NSImage(contentsOf: iconURL) {
+            image.size = NSSize(width: 18, height: 18)
+            return image
+        }
+
+        // Relative executable fallback (works in standalone CLI or debug builds)
+        if let execDir = Bundle.main.executableURL?.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Resources") {
+            let resFile = execDir.appendingPathComponent("menu_icon.png")
+            if let image = NSImage(contentsOf: resFile) {
+                image.size = NSSize(width: 18, height: 18)
+                return image
+            }
+        }
+
+        return nil
+    }
+
+    public func buildMenu() {
         let menu = NSMenu()
 
-        let titleItem = NSMenuItem(title: "floating-utils-intel-mac", action: nil, keyEquivalent: "")
+        // 1. App Title & Architecture
+        let titleItem = NSMenuItem(title: "Intel File Utils (v1.0.0 • x86_64)", action: nil, keyEquivalent: "")
         titleItem.isEnabled = false
         menu.addItem(titleItem)
 
+        // 2. Permission Status Indicator
         let isTrusted = AXIsProcessTrusted()
-        let statusTitle = isTrusted ? "● Gesture Detection: Active" : "▲ Accessibility Permission Needed"
+        let statusTitle = isTrusted ? "● Zero-Click Gestures: Active" : "▲ Accessibility Permission Needed"
         let statusMenuItem = NSMenuItem(title: statusTitle, action: isTrusted ? nil : #selector(openAccessibilitySettings), keyEquivalent: "")
         statusMenuItem.target = self
         menu.addItem(statusMenuItem)
 
         menu.addItem(NSMenuItem.separator())
 
+        // 3. Core Quick Utilities
         let cropItem = NSMenuItem(title: "Freeform Crop & Resize...", action: #selector(cropImagesAction), keyEquivalent: "c")
         cropItem.target = self
         menu.addItem(cropItem)
@@ -65,16 +71,15 @@ public final class StatusItemController: NSObject {
         pdfItem.target = self
         menu.addItem(pdfItem)
 
-        let resizeItem = NSMenuItem(title: "Resize & Edit (Image / PDF)...", action: #selector(resizeImagesAction), keyEquivalent: "r")
+        let resizeItem = NSMenuItem(title: "Resize & Scale (Image / PDF)...", action: #selector(resizeImagesAction), keyEquivalent: "r")
         resizeItem.target = self
         menu.addItem(resizeItem)
-
 
         let mergePDFItem = NSMenuItem(title: "Merge Multiple PDFs...", action: #selector(mergePDFsAction), keyEquivalent: "m")
         mergePDFItem.target = self
         menu.addItem(mergePDFItem)
 
-        let convertItem = NSMenuItem(title: "Quick Convert File...", action: #selector(quickConvert), keyEquivalent: "o")
+        let convertItem = NSMenuItem(title: "Quick Convert Any File...", action: #selector(quickConvert), keyEquivalent: "o")
         convertItem.target = self
         menu.addItem(convertItem)
 
@@ -84,35 +89,67 @@ public final class StatusItemController: NSObject {
 
         menu.addItem(NSMenuItem.separator())
 
-        let cheatHeader = NSMenuItem(title: "Gesture Cheatsheet (while dragging):", action: nil, keyEquivalent: "")
+        // 4. Zero-Click Gesture Cheatsheet
+        let cheatHeader = NSMenuItem(title: "Zero-Click Gestures (while dragging in Finder):", action: nil, keyEquivalent: "")
         cheatHeader.isEnabled = false
         menu.addItem(cheatHeader)
 
-        let cheatShift = NSMenuItem(title: "  ⇧ Shift: Conversions (WebP, PDF, PNG, JPG)", action: nil, keyEquivalent: "")
+        let cheatShift = NSMenuItem(title: "  ⇧ Shift: Conversions (WebP, PDF, PNG, JPG, MP3, MP4)", action: nil, keyEquivalent: "")
         cheatShift.isEnabled = false
         menu.addItem(cheatShift)
 
-        let cheatCmd = NSMenuItem(title: "  ⌘ Command: Tools (Freeform Crop, Resize, PDF)", action: nil, keyEquivalent: "")
+        let cheatCmd = NSMenuItem(title: "  ⌘ Command: Tools (Freeform Crop, Resize, PDF, Compress)", action: nil, keyEquivalent: "")
         cheatCmd.isEnabled = false
         menu.addItem(cheatCmd)
 
-        let cheatCtrl = NSMenuItem(title: "  ⌃ Control: Actions (Float Shelf, AirDrop)", action: nil, keyEquivalent: "")
+        let cheatCtrl = NSMenuItem(title: "  ⌃ Control: Actions (Floating Shelf, AirDrop, Copy, Path)", action: nil, keyEquivalent: "")
         cheatCtrl.isEnabled = false
         menu.addItem(cheatCtrl)
 
         menu.addItem(NSMenuItem.separator())
 
-        let permItem = NSMenuItem(title: "Check Permissions...", action: #selector(openAccessibilitySettings), keyEquivalent: "")
+        // 5. About & Settings
+        let aboutItem = NSMenuItem(title: "About Intel File Utils...", action: #selector(showAboutDialog), keyEquivalent: "")
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
+        let permItem = NSMenuItem(title: "Check Accessibility Permissions...", action: #selector(openAccessibilitySettings), keyEquivalent: "")
         permItem.target = self
         menu.addItem(permItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "Quit floating-utils-intel-mac", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit Intel File Utils", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
         statusItem?.menu = menu
+    }
+
+    @objc private func showAboutDialog() {
+        let alert = NSAlert()
+        alert.messageText = "Intel File Utils"
+        alert.informativeText = """
+        Version 1.0.0 (Intel x86_64)
+        An open-source, zero-click file conversion & manipulation tool inspired by Tangerine, engineered 100% offline for Intel Macs.
+
+        • GitHub: https://github.com/zaarouri/intel-file-utils
+        • Open Source: MIT License
+        • Author: @zaarouri
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Visit GitHub")
+        alert.addButton(withTitle: "OK")
+
+        if let icon = NSApp.applicationIconImage {
+            alert.icon = icon
+        }
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            if let url = URL(string: "https://github.com/zaarouri/intel-file-utils") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     @objc private func cropImagesAction() {
@@ -152,12 +189,20 @@ public final class StatusItemController: NSObject {
                     do {
                         let finalURL = try FileConverterService.shared.convertWithPythonPillow(source: file, destination: outURL)
                         await MainActor.run {
-                            self.notify(title: "Converted to WebP", message: finalURL.lastPathComponent, success: true)
+                            NotificationService.shared.notify(
+                                title: "Converted to WebP",
+                                message: finalURL.lastPathComponent,
+                                success: true
+                            )
                             NSWorkspace.shared.activateFileViewerSelecting([finalURL])
                         }
                     } catch {
                         await MainActor.run {
-                            self.notify(title: "WebP Conversion Failed", message: error.localizedDescription, success: false)
+                            NotificationService.shared.notify(
+                                title: "WebP Conversion Failed",
+                                message: error.localizedDescription,
+                                success: false
+                            )
                         }
                     }
                 }
@@ -202,12 +247,12 @@ public final class StatusItemController: NSObject {
                     let finalURL = try FileConverterService.shared.createPDFFromImages(sources: files, destination: outURL)
                     await MainActor.run {
                         let title = files.count > 1 ? "Created PDF from \(files.count) Images" : "Converted Image to PDF"
-                        self.notify(title: title, message: finalURL.lastPathComponent, success: true)
+                        NotificationService.shared.notify(title: title, message: finalURL.lastPathComponent, success: true)
                         NSWorkspace.shared.activateFileViewerSelecting([finalURL])
                     }
                 } catch {
                     await MainActor.run {
-                        self.notify(title: "PDF Conversion Failed", message: error.localizedDescription, success: false)
+                        NotificationService.shared.notify(title: "PDF Conversion Failed", message: error.localizedDescription, success: false)
                     }
                 }
             }
@@ -234,12 +279,12 @@ public final class StatusItemController: NSObject {
                 do {
                     let finalURL = try FileConverterService.shared.mergePDFs(sources: files, destination: outURL)
                     await MainActor.run {
-                        self.notify(title: "Merged \(files.count) PDFs", message: finalURL.lastPathComponent, success: true)
+                        NotificationService.shared.notify(title: "Merged \(files.count) PDFs", message: finalURL.lastPathComponent, success: true)
                         NSWorkspace.shared.activateFileViewerSelecting([finalURL])
                     }
                 } catch {
                     await MainActor.run {
-                        self.notify(title: "Merge PDFs Failed", message: error.localizedDescription, success: false)
+                        NotificationService.shared.notify(title: "Merge PDFs Failed", message: error.localizedDescription, success: false)
                     }
                 }
             }
@@ -271,17 +316,5 @@ public final class StatusItemController: NSObject {
 
     @objc private func quitApp() {
         NSApplication.shared.terminate(nil)
-    }
-
-    private func notify(title: String, message: String, success: Bool) {
-        let notif = NSUserNotification()
-        notif.title = title
-        notif.informativeText = message
-        NSUserNotificationCenter.default.deliver(notif)
-        if success {
-            NSSound(named: "Glass")?.play()
-        } else {
-            NSSound(named: "Basso")?.play()
-        }
     }
 }

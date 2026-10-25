@@ -2,16 +2,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "floating-utils-intel-mac",
+    name: "intel-file-utils",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "floating-utils-intel-mac", targets: ["floating-utils-intel-mac"])
+        .executable(name: "intel-file-utils", targets: ["intel-file-utils"])
     ],
     targets: [
         .executableTarget(
-            name: "floating-utils-intel-mac",
+            name: "intel-file-utils",
             path: "Sources"
         )
     ]

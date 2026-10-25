@@ -54,10 +54,10 @@ public final class InteractiveCropView: NSView {
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 0.08, alpha: 1.0).cgColor
-        layer?.cornerRadius = 8
+        layer?.backgroundColor = NSColor(red: 0.08, green: 0.09, blue: 0.11, alpha: 1.0).cgColor
+        layer?.cornerRadius = 12
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor(white: 1.0, alpha: 0.15).cgColor
+        layer?.borderColor = NSColor(white: 1.0, alpha: 0.12).cgColor
     }
 
     required init?(coder: NSCoder) {
@@ -68,7 +68,7 @@ public final class InteractiveCropView: NSView {
 
     public func imageDrawingRect() -> CGRect {
         guard let img = image, img.size.width > 0, img.size.height > 0 else { return .zero }
-        let b = bounds.insetBy(dx: 14, dy: 14)
+        let b = bounds.insetBy(dx: 16, dy: 16)
         guard b.width > 0 && b.height > 0 else { return .zero }
 
         let scale = min(b.width / img.size.width, b.height / img.size.height)
@@ -79,7 +79,6 @@ public final class InteractiveCropView: NSView {
         return CGRect(x: ox, y: oy, width: dw, height: dh)
     }
 
-    // Convert normalized crop rect to view coordinates
     public func cropRectInView() -> CGRect? {
         guard let norm = cropNormalizedRect else { return nil }
         let imgRect = imageDrawingRect()
@@ -93,10 +92,9 @@ public final class InteractiveCropView: NSView {
     }
 
     // MARK: - Mouse Event Handling
-
     private func hitTestCrop(loc: CGPoint) -> CropDragMode {
         guard let box = cropRectInView() else { return .create }
-        let tol: CGFloat = 12.0
+        let tol: CGFloat = 14.0
 
         let tl = CGPoint(x: box.minX, y: box.maxY)
         let tr = CGPoint(x: box.maxX, y: box.maxY)
@@ -124,7 +122,7 @@ public final class InteractiveCropView: NSView {
             return
         }
 
-        let tol: CGFloat = 10.0
+        let tol: CGFloat = 12.0
         let tlRect = CGRect(x: box.minX - tol, y: box.maxY - tol, width: tol * 2, height: tol * 2)
         let trRect = CGRect(x: box.maxX - tol, y: box.maxY - tol, width: tol * 2, height: tol * 2)
         let blRect = CGRect(x: box.minX - tol, y: box.minY - tol, width: tol * 2, height: tol * 2)
@@ -180,8 +178,8 @@ public final class InteractiveCropView: NSView {
             let clampedX = min(max(current.x, imgRect.minX), imgRect.maxX)
             let clampedY = min(max(current.y, imgRect.minY), imgRect.maxY)
 
-            var rx = min(dragStartLoc.x, clampedX)
-            var ry = min(dragStartLoc.y, clampedY)
+            let rx = min(dragStartLoc.x, clampedX)
+            let ry = min(dragStartLoc.y, clampedY)
             var rw = abs(clampedX - dragStartLoc.x)
             var rh = abs(clampedY - dragStartLoc.y)
 
@@ -286,8 +284,7 @@ public final class InteractiveCropView: NSView {
         initialCropNorm = nil
     }
 
-    // MARK: - Drawing
-
+    // MARK: - Drawing & Graphics
     public override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
@@ -295,18 +292,21 @@ public final class InteractiveCropView: NSView {
         let imgRect = imageDrawingRect()
         guard imgRect.width > 0, let img = image else { return }
 
-        // 1. Draw Source Image
+        // 1. Draw Source Image with Subtle Drop Shadow
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -4), blur: 14, color: NSColor(white: 0, alpha: 0.35).cgColor)
         img.draw(in: imgRect)
+        ctx.restoreGState()
 
         // 2. Crop Overlay
         if let norm = cropNormalizedRect, let cropBox = cropRectInView() {
-            // Dark outer mask
+            // Dark outer mask with smooth vignette
             ctx.saveGState()
             let maskPath = CGMutablePath()
             maskPath.addRect(bounds)
             maskPath.addRect(cropBox)
             ctx.addPath(maskPath)
-            ctx.setFillColor(NSColor(white: 0, alpha: 0.60).cgColor)
+            ctx.setFillColor(NSColor(white: 0, alpha: 0.65).cgColor)
             ctx.fillPath(using: .evenOdd)
             ctx.restoreGState()
 
@@ -317,7 +317,7 @@ public final class InteractiveCropView: NSView {
             ctx.stroke(cropBox)
 
             // Rule-of-thirds Grid
-            ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.35).cgColor)
+            ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.32).cgColor)
             ctx.setLineWidth(1.0)
             let cx = cropBox.minX
             let cy = cropBox.minY
@@ -330,9 +330,10 @@ public final class InteractiveCropView: NSView {
                 CGPoint(x: cx, y: cy + 2 * ch / 3), CGPoint(x: cx + cw, y: cy + 2 * ch / 3)
             ])
 
-            // Corner Handles (12x12 white squares with border)
-            let handleSize: CGFloat = 10.0
+            // Corner Handles (12x12 rounded white gloss pills)
+            let handleSize: CGFloat = 12.0
             ctx.setFillColor(NSColor.white.cgColor)
+            ctx.setShadow(offset: CGSize(width: 0, height: -1), blur: 3, color: NSColor(white: 0, alpha: 0.4).cgColor)
             let corners = [
                 CGRect(x: cx - 2, y: cy - 2, width: handleSize, height: handleSize),
                 CGRect(x: cx + cw - handleSize + 2, y: cy - 2, width: handleSize, height: handleSize),
@@ -340,61 +341,75 @@ public final class InteractiveCropView: NSView {
                 CGRect(x: cx + cw - handleSize + 2, y: cy + ch - handleSize + 2, width: handleSize, height: handleSize)
             ]
             for c in corners {
-                let path = CGPath(roundedRect: c, cornerWidth: 2, cornerHeight: 2, transform: nil)
+                let path = CGPath(roundedRect: c, cornerWidth: 3, cornerHeight: 3, transform: nil)
                 ctx.addPath(path)
                 ctx.fillPath()
             }
 
-            // Edge Handle bars
-            let edgeBarW: CGFloat = 16.0
-            let edgeBarH: CGFloat = 5.0
+            // Edge Handle bars (18x6 pills)
+            let edgeBarW: CGFloat = 18.0
+            let edgeBarH: CGFloat = 6.0
             let edgeBars = [
-                CGRect(x: cx + cw / 2 - edgeBarW / 2, y: cy - 2, width: edgeBarW, height: edgeBarH),
+                CGRect(x: cx + cw / 2 - edgeBarW / 2, y: cy - 3, width: edgeBarW, height: edgeBarH),
                 CGRect(x: cx + cw / 2 - edgeBarW / 2, y: cy + ch - 3, width: edgeBarW, height: edgeBarH),
-                CGRect(x: cx - 2, y: cy + ch / 2 - edgeBarW / 2, width: edgeBarH, height: edgeBarW),
+                CGRect(x: cx - 3, y: cy + ch / 2 - edgeBarW / 2, width: edgeBarH, height: edgeBarW),
                 CGRect(x: cx + cw - 3, y: cy + ch / 2 - edgeBarW / 2, width: edgeBarH, height: edgeBarW)
             ]
             for b in edgeBars {
-                let path = CGPath(roundedRect: b, cornerWidth: 2, cornerHeight: 2, transform: nil)
+                let path = CGPath(roundedRect: b, cornerWidth: 3, cornerHeight: 3, transform: nil)
                 ctx.addPath(path)
                 ctx.fillPath()
             }
             ctx.restoreGState()
 
-            // Dynamic Crop Badge
+            // Dynamic Crop Badge with Aspect Ratio Readout
             let pxW = Int(round(norm.size.width * originalWidth))
             let pxH = Int(round(norm.size.height * originalHeight))
-            let badgeText = "Crop: \(pxW) × \(pxH) px • Drag corners or inside to move"
-            drawBadge(text: badgeText, at: CGPoint(x: cropBox.midX, y: max(22, cropBox.minY - 16)))
+            let gcdVal = gcd(pxW, pxH)
+            let rW = pxW / max(1, gcdVal)
+            let rH = pxH / max(1, gcdVal)
+            let ratioStr = (rW <= 32 && rH <= 32) ? " • \(rW):\(rH)" : ""
+            let badgeText = "Crop: \(pxW) × \(pxH) px\(ratioStr)"
+            drawBadge(text: badgeText, at: CGPoint(x: cropBox.midX, y: max(24, cropBox.minY - 18)))
         } else {
             // Helpful Guide Badge
-            drawBadge(text: "Drag freely anywhere on image to crop (Hold ⇧ for 1:1)", at: CGPoint(x: bounds.midX, y: 24))
+            drawBadge(text: "Drag freely anywhere on image to crop (Hold ⇧ for 1:1 square)", at: CGPoint(x: bounds.midX, y: 26))
         }
     }
 
+    private func gcd(_ a: Int, _ b: Int) -> Int {
+        var x = a, y = b
+        while y != 0 {
+            let t = y
+            y = x % y
+            x = t
+        }
+        return x
+    }
+
     private func drawBadge(text: String, at point: CGPoint) {
-        let font = NSFont.systemFont(ofSize: 10.5, weight: .bold)
+        let font = NSFont.systemFont(ofSize: 11.0, weight: .bold)
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: NSColor.white
         ]
         let str = NSAttributedString(string: text, attributes: attrs)
         let size = str.size()
-        let pillRect = CGRect(x: point.x - size.width / 2 - 10, y: point.y - size.height / 2 - 4, width: size.width + 20, height: size.height + 8)
+        let pillRect = CGRect(x: point.x - size.width / 2 - 12, y: point.y - size.height / 2 - 5, width: size.width + 24, height: size.height + 10)
 
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.saveGState()
-        let pillPath = CGPath(roundedRect: pillRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
+        let pillPath = CGPath(roundedRect: pillRect, cornerWidth: 7, cornerHeight: 7, transform: nil)
         ctx.addPath(pillPath)
-        ctx.setFillColor(NSColor(white: 0.10, alpha: 0.90).cgColor)
+        ctx.setFillColor(NSColor(red: 0.10, green: 0.11, blue: 0.14, alpha: 0.94).cgColor)
         ctx.fillPath()
         ctx.addPath(pillPath)
-        ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.30).cgColor)
+        ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.28).cgColor)
         ctx.setLineWidth(1.0)
         ctx.strokePath()
         ctx.restoreGState()
 
-        str.draw(at: CGPoint(x: pillRect.minX + 10, y: pillRect.minY + 4))
+        str.draw(at: CGPoint(x: pillRect.minX + 12, y: pillRect.minY + 5))
     }
 }
 
@@ -414,7 +429,7 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
 
     // UI Elements
     private let cropCanvasView = InteractiveCropView()
-    private let fileInfoLabel = NSTextField(labelWithString: "Loading...")
+    private let fileInfoBadge = NSTextField(labelWithString: "Loading...")
     private let targetInfoLabel = NSTextField(labelWithString: "Target: —")
 
     private let cropAspectPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -422,7 +437,8 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
 
     private let widthField = NSTextField()
     private let heightField = NSTextField()
-    private let lockAspectCheckbox = NSButton(checkboxWithTitle: "Lock Aspect Ratio", target: nil, action: nil)
+    private let lockAspectButton = NSButton()
+    private var isAspectLocked: Bool = true
 
     private let presetPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     public let formatPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -433,19 +449,21 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
     private let contrastSlider = NSSlider(value: 1.0, minValue: 0.5, maxValue: 1.5, target: nil, action: nil)
     private let saturationSlider = NSSlider(value: 1.0, minValue: 0.0, maxValue: 2.0, target: nil, action: nil)
 
-    private let applyBtn = NSButton(title: "Apply Crop & Save as WebP", target: nil, action: nil)
+    private let applyBtn = NSButton()
 
     private var isUpdatingFields = false
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 120, y: 120, width: 860, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            contentRect: NSRect(x: 100, y: 100, width: 940, height: 650),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Freeform Crop, Resize & Convert to WebP"
-        window.minSize = NSSize(width: 780, height: 540)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.minSize = NSSize(width: 860, height: 580)
         window.isReleasedWhenClosed = false
         window.center()
 
@@ -480,7 +498,7 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
                 let box = page.bounds(for: .mediaBox)
                 originalWidth = box.width
                 originalHeight = box.height
-                let pageImg = page.thumbnail(of: NSSize(width: 1000, height: 1000), for: .mediaBox)
+                let pageImg = page.thumbnail(of: NSSize(width: 1200, height: 1200), for: .mediaBox)
                 cropCanvasView.image = pageImg
             }
         } else {
@@ -505,8 +523,8 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
 
         let sizeBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
         let sizeStr = ByteCountFormatter.string(fromByteCount: Int64(sizeBytes), countStyle: .file)
-        let multiNote = targetFiles.count > 1 ? " (and \(targetFiles.count - 1) other files)" : ""
-        fileInfoLabel.stringValue = "\(url.lastPathComponent)\(multiNote) • \(Int(originalWidth)) × \(Int(originalHeight)) px (\(sizeStr))"
+        let multiNote = targetFiles.count > 1 ? " +\(targetFiles.count - 1) other files" : ""
+        fileInfoBadge.stringValue = "\(url.lastPathComponent)\(multiNote) • \(Int(originalWidth)) × \(Int(originalHeight)) px (\(sizeStr))"
 
         isUpdatingFields = true
         widthField.stringValue = "\(Int(originalWidth))"
@@ -540,15 +558,15 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
             rootSplit.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
 
-        // 1. Left View: Canvas & Rotate Bar
+        // 1. Left View: Studio Canvas Area
         let leftContainer = NSView()
         leftContainer.wantsLayer = true
-        leftContainer.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        leftContainer.layer?.backgroundColor = NSColor(red: 0.07, green: 0.08, blue: 0.10, alpha: 1.0).cgColor
 
-        fileInfoLabel.translatesAutoresizingMaskIntoConstraints = false
-        fileInfoLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-        fileInfoLabel.textColor = .labelColor
-        leftContainer.addSubview(fileInfoLabel)
+        fileInfoBadge.translatesAutoresizingMaskIntoConstraints = false
+        fileInfoBadge.font = .systemFont(ofSize: 12, weight: .bold)
+        fileInfoBadge.textColor = .white
+        leftContainer.addSubview(fileInfoBadge)
 
         cropCanvasView.translatesAutoresizingMaskIntoConstraints = false
         cropCanvasView.onCropChanged = { [weak self] normRect in
@@ -556,106 +574,110 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
         }
         leftContainer.addSubview(cropCanvasView)
 
-        let rotateLeftBtn = NSButton(title: "↺ Rotate Left", target: self, action: #selector(rotateLeft))
-        rotateLeftBtn.bezelStyle = .rounded
-        rotateLeftBtn.translatesAutoresizingMaskIntoConstraints = false
-        leftContainer.addSubview(rotateLeftBtn)
+        // Canvas Tool Bar (Glass Pills)
+        let toolBar = NSStackView()
+        toolBar.orientation = .horizontal
+        toolBar.spacing = 8
+        toolBar.translatesAutoresizingMaskIntoConstraints = false
 
-        let rotateRightBtn = NSButton(title: "↻ Rotate Right", target: self, action: #selector(rotateRight))
-        rotateRightBtn.bezelStyle = .rounded
-        rotateRightBtn.translatesAutoresizingMaskIntoConstraints = false
-        leftContainer.addSubview(rotateRightBtn)
+        let rotateLeftBtn = makePillButton(title: "↺ Rotate 90°", action: #selector(rotateLeft))
+        let rotateRightBtn = makePillButton(title: "↻ Rotate 90°", action: #selector(rotateRight))
+        let flipBtn = makePillButton(title: "⇄ Flip H", action: #selector(flipHorizontal))
+        let resetCropBtn = makePillButton(title: "⛶ Reset Crop", action: #selector(resetCrop))
 
-        let flipBtn = NSButton(title: "⇄ Flip H", target: self, action: #selector(flipHorizontal))
-        flipBtn.bezelStyle = .rounded
-        flipBtn.translatesAutoresizingMaskIntoConstraints = false
-        leftContainer.addSubview(flipBtn)
-
-        let resetCropBtn = NSButton(title: "Reset Crop", target: self, action: #selector(resetCrop))
-        resetCropBtn.bezelStyle = .rounded
-        resetCropBtn.translatesAutoresizingMaskIntoConstraints = false
-        leftContainer.addSubview(resetCropBtn)
+        toolBar.addArrangedSubview(rotateLeftBtn)
+        toolBar.addArrangedSubview(rotateRightBtn)
+        toolBar.addArrangedSubview(flipBtn)
+        toolBar.addArrangedSubview(resetCropBtn)
+        leftContainer.addSubview(toolBar)
 
         NSLayoutConstraint.activate([
-            fileInfoLabel.topAnchor.constraint(equalTo: leftContainer.topAnchor, constant: 14),
-            fileInfoLabel.leadingAnchor.constraint(equalTo: leftContainer.leadingAnchor, constant: 16),
-            fileInfoLabel.trailingAnchor.constraint(equalTo: leftContainer.trailingAnchor, constant: -16),
+            fileInfoBadge.topAnchor.constraint(equalTo: leftContainer.topAnchor, constant: 16),
+            fileInfoBadge.leadingAnchor.constraint(equalTo: leftContainer.leadingAnchor, constant: 18),
+            fileInfoBadge.trailingAnchor.constraint(equalTo: leftContainer.trailingAnchor, constant: -18),
 
-            cropCanvasView.topAnchor.constraint(equalTo: fileInfoLabel.bottomAnchor, constant: 12),
-            cropCanvasView.leadingAnchor.constraint(equalTo: leftContainer.leadingAnchor, constant: 16),
-            cropCanvasView.trailingAnchor.constraint(equalTo: leftContainer.trailingAnchor, constant: -16),
-            cropCanvasView.bottomAnchor.constraint(equalTo: rotateLeftBtn.topAnchor, constant: -14),
+            cropCanvasView.topAnchor.constraint(equalTo: fileInfoBadge.bottomAnchor, constant: 12),
+            cropCanvasView.leadingAnchor.constraint(equalTo: leftContainer.leadingAnchor, constant: 18),
+            cropCanvasView.trailingAnchor.constraint(equalTo: leftContainer.trailingAnchor, constant: -18),
+            cropCanvasView.bottomAnchor.constraint(equalTo: toolBar.topAnchor, constant: -14),
 
-            rotateLeftBtn.leadingAnchor.constraint(equalTo: leftContainer.leadingAnchor, constant: 16),
-            rotateLeftBtn.bottomAnchor.constraint(equalTo: leftContainer.bottomAnchor, constant: -14),
-
-            rotateRightBtn.leadingAnchor.constraint(equalTo: rotateLeftBtn.trailingAnchor, constant: 8),
-            rotateRightBtn.bottomAnchor.constraint(equalTo: leftContainer.bottomAnchor, constant: -14),
-
-            flipBtn.leadingAnchor.constraint(equalTo: rotateRightBtn.trailingAnchor, constant: 8),
-            flipBtn.bottomAnchor.constraint(equalTo: leftContainer.bottomAnchor, constant: -14),
-
-            resetCropBtn.trailingAnchor.constraint(equalTo: leftContainer.trailingAnchor, constant: -16),
-            resetCropBtn.bottomAnchor.constraint(equalTo: leftContainer.bottomAnchor, constant: -14)
+            toolBar.leadingAnchor.constraint(equalTo: leftContainer.leadingAnchor, constant: 18),
+            toolBar.bottomAnchor.constraint(equalTo: leftContainer.bottomAnchor, constant: -16),
+            toolBar.heightAnchor.constraint(equalToConstant: 28)
         ])
 
-        // 2. Right View: Controls Panel
-        let rightContainer = NSView()
-        rightContainer.wantsLayer = true
-        rightContainer.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        // 2. Right View: Controls Panel (Translucent Sidebar)
+        let rightVisual = NSVisualEffectView()
+        rightVisual.material = .sidebar
+        rightVisual.blendingMode = .behindWindow
+        rightVisual.state = .active
+        rightVisual.wantsLayer = true
 
-        // Crop Section
-        let cropTitle = makeSectionLabel("FREEFORM CROP")
+        let rightContainer = NSView()
+        rightContainer.translatesAutoresizingMaskIntoConstraints = false
+        rightVisual.addSubview(rightContainer)
+
+        NSLayoutConstraint.activate([
+            rightContainer.leadingAnchor.constraint(equalTo: rightVisual.leadingAnchor),
+            rightContainer.trailingAnchor.constraint(equalTo: rightVisual.trailingAnchor),
+            rightContainer.topAnchor.constraint(equalTo: rightVisual.topAnchor),
+            rightContainer.bottomAnchor.constraint(equalTo: rightVisual.bottomAnchor)
+        ])
+
+        // Card 1: FREEFORM CROP
+        let cropTitle = makeSectionHeader("FREEFORM CROP")
         rightContainer.addSubview(cropTitle)
 
         cropAspectPopUp.translatesAutoresizingMaskIntoConstraints = false
         cropAspectPopUp.addItems(withTitles: [
             "Freeform Crop (Drag Freely on Canvas)",
-            "1:1 Square",
-            "16:9 Widescreen Landscape",
+            "1:1 Square (Avatar / Post)",
+            "16:9 Widescreen (YouTube / Banner)",
             "4:3 Standard Photo",
             "9:16 Vertical Reel / Story",
-            "3:2 Classic 35mm"
+            "3:2 Classic 35mm Photo"
         ])
         cropAspectPopUp.target = self
         cropAspectPopUp.action = #selector(aspectPresetSelected)
         rightContainer.addSubview(cropAspectPopUp)
 
         cropStatusLabel.translatesAutoresizingMaskIntoConstraints = false
-        cropStatusLabel.font = .systemFont(ofSize: 10.5, weight: .medium)
+        cropStatusLabel.font = .systemFont(ofSize: 11, weight: .medium)
         cropStatusLabel.textColor = .secondaryLabelColor
         rightContainer.addSubview(cropStatusLabel)
 
-        // Dimensions Section
-        let dimTitle = makeSectionLabel("TARGET DIMENSIONS")
+        // Card 2: TARGET DIMENSIONS
+        let dimTitle = makeSectionHeader("TARGET DIMENSIONS & SCALING")
         rightContainer.addSubview(dimTitle)
 
         let wLabel = NSTextField(labelWithString: "Width:")
-        wLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        wLabel.font = .systemFont(ofSize: 11.5, weight: .semibold)
         wLabel.translatesAutoresizingMaskIntoConstraints = false
         rightContainer.addSubview(wLabel)
 
         widthField.translatesAutoresizingMaskIntoConstraints = false
         widthField.delegate = self
+        widthField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         rightContainer.addSubview(widthField)
 
         let hLabel = NSTextField(labelWithString: "Height:")
-        hLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        hLabel.font = .systemFont(ofSize: 11.5, weight: .semibold)
         hLabel.translatesAutoresizingMaskIntoConstraints = false
         rightContainer.addSubview(hLabel)
 
         heightField.translatesAutoresizingMaskIntoConstraints = false
         heightField.delegate = self
+        heightField.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         rightContainer.addSubview(heightField)
 
-        lockAspectCheckbox.translatesAutoresizingMaskIntoConstraints = false
-        lockAspectCheckbox.state = .on
-        rightContainer.addSubview(lockAspectCheckbox)
+        lockAspectButton.translatesAutoresizingMaskIntoConstraints = false
+        lockAspectButton.bezelStyle = .texturedRounded
+        lockAspectButton.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Lock Aspect Ratio")
+        lockAspectButton.target = self
+        lockAspectButton.action = #selector(toggleAspectLock)
+        rightContainer.addSubview(lockAspectButton)
 
-        // Scale Section
-        let scaleTitle = makeSectionLabel("QUICK SCALE PRESETS")
-        rightContainer.addSubview(scaleTitle)
-
+        // Scale Presets Stack
         let scaleStack = NSStackView()
         scaleStack.orientation = .horizontal
         scaleStack.distribution = .fillEqually
@@ -665,15 +687,12 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
         for pct in [25, 50, 75, 100, 200] {
             let btn = NSButton(title: "\(pct)%", target: self, action: #selector(scalePresetClicked(_:)))
             btn.tag = pct
-            btn.bezelStyle = .recessed
+            btn.bezelStyle = .rounded
             scaleStack.addArrangedSubview(btn)
         }
         rightContainer.addSubview(scaleStack)
 
-        // Standard Resolutions
-        let presetTitle = makeSectionLabel("STANDARD RESOLUTIONS")
-        rightContainer.addSubview(presetTitle)
-
+        // Standard Resolutions Dropdown
         presetPopUp.translatesAutoresizingMaskIntoConstraints = false
         presetPopUp.addItems(withTitles: [
             "Select resolution preset...",
@@ -688,8 +707,8 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
         presetPopUp.action = #selector(resolutionPresetSelected)
         rightContainer.addSubview(presetPopUp)
 
-        // Output Format
-        let formatTitle = makeSectionLabel("OUTPUT FORMAT")
+        // Card 3: OUTPUT FORMAT & QUALITY
+        let formatTitle = makeSectionHeader("OUTPUT FORMAT & COMPRESSION")
         rightContainer.addSubview(formatTitle)
 
         formatPopUp.translatesAutoresizingMaskIntoConstraints = false
@@ -697,7 +716,7 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
             "WebP (.webp) — Optimized & Modern",
             "PNG (.png) — Lossless",
             "JPEG (.jpg) — Standard Photo",
-            "PDF (.pdf) — Document",
+            "PDF (.pdf) — Vector Document",
             "Keep Original Format"
         ])
         formatPopUp.target = self
@@ -705,7 +724,7 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
         rightContainer.addSubview(formatPopUp)
 
         qualityLabel.translatesAutoresizingMaskIntoConstraints = false
-        qualityLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        qualityLabel.font = .systemFont(ofSize: 10.5, weight: .medium)
         qualityLabel.textColor = .secondaryLabelColor
         rightContainer.addSubview(qualityLabel)
 
@@ -714,12 +733,12 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
         qualitySlider.action = #selector(qualitySliderChanged)
         rightContainer.addSubview(qualitySlider)
 
-        // Adjustments
-        let adjTitle = makeSectionLabel("ADJUSTMENTS")
+        // Card 4: ADJUSTMENTS
+        let adjTitle = makeSectionHeader("IMAGE ADJUSTMENTS")
         rightContainer.addSubview(adjTitle)
 
         let brightLabel = NSTextField(labelWithString: "Brightness:")
-        brightLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        brightLabel.font = .systemFont(ofSize: 10.5, weight: .medium)
         brightLabel.translatesAutoresizingMaskIntoConstraints = false
         rightContainer.addSubview(brightLabel)
 
@@ -729,7 +748,7 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
         rightContainer.addSubview(brightnessSlider)
 
         let contrastLabel = NSTextField(labelWithString: "Contrast:")
-        contrastLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        contrastLabel.font = .systemFont(ofSize: 10.5, weight: .medium)
         contrastLabel.translatesAutoresizingMaskIntoConstraints = false
         rightContainer.addSubview(contrastLabel)
 
@@ -739,11 +758,11 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
         rightContainer.addSubview(contrastSlider)
 
         targetInfoLabel.translatesAutoresizingMaskIntoConstraints = false
-        targetInfoLabel.font = .systemFont(ofSize: 11, weight: .bold)
-        targetInfoLabel.textColor = .secondaryLabelColor
+        targetInfoLabel.font = .systemFont(ofSize: 11.5, weight: .bold)
+        targetInfoLabel.textColor = .labelColor
         rightContainer.addSubview(targetInfoLabel)
 
-        // Bottom Action buttons
+        // Action Buttons
         let cancelBtn = NSButton(title: "Cancel", target: self, action: #selector(cancelAction))
         cancelBtn.bezelStyle = .rounded
         cancelBtn.translatesAutoresizingMaskIntoConstraints = false
@@ -757,111 +776,123 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
         rightContainer.addSubview(applyBtn)
 
         NSLayoutConstraint.activate([
-            cropTitle.topAnchor.constraint(equalTo: rightContainer.topAnchor, constant: 14),
-            cropTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            cropTitle.topAnchor.constraint(equalTo: rightContainer.topAnchor, constant: 18),
+            cropTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
 
             cropAspectPopUp.topAnchor.constraint(equalTo: cropTitle.bottomAnchor, constant: 6),
-            cropAspectPopUp.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
-            cropAspectPopUp.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -16),
+            cropAspectPopUp.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
+            cropAspectPopUp.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -18),
 
             cropStatusLabel.topAnchor.constraint(equalTo: cropAspectPopUp.bottomAnchor, constant: 4),
-            cropStatusLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
-            cropStatusLabel.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -16),
+            cropStatusLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
+            cropStatusLabel.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -18),
 
-            dimTitle.topAnchor.constraint(equalTo: cropStatusLabel.bottomAnchor, constant: 12),
-            dimTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            dimTitle.topAnchor.constraint(equalTo: cropStatusLabel.bottomAnchor, constant: 14),
+            dimTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
 
             wLabel.topAnchor.constraint(equalTo: dimTitle.bottomAnchor, constant: 6),
-            wLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            wLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
             wLabel.widthAnchor.constraint(equalToConstant: 45),
 
             widthField.centerYAnchor.constraint(equalTo: wLabel.centerYAnchor),
             widthField.leadingAnchor.constraint(equalTo: wLabel.trailingAnchor, constant: 4),
-            widthField.widthAnchor.constraint(equalToConstant: 75),
+            widthField.widthAnchor.constraint(equalToConstant: 72),
 
             hLabel.centerYAnchor.constraint(equalTo: wLabel.centerYAnchor),
-            hLabel.leadingAnchor.constraint(equalTo: widthField.trailingAnchor, constant: 12),
-            hLabel.widthAnchor.constraint(equalToConstant: 45),
+            hLabel.leadingAnchor.constraint(equalTo: widthField.trailingAnchor, constant: 10),
+            hLabel.widthAnchor.constraint(equalToConstant: 48),
 
             heightField.centerYAnchor.constraint(equalTo: wLabel.centerYAnchor),
             heightField.leadingAnchor.constraint(equalTo: hLabel.trailingAnchor, constant: 4),
-            heightField.widthAnchor.constraint(equalToConstant: 75),
+            heightField.widthAnchor.constraint(equalToConstant: 72),
 
-            lockAspectCheckbox.topAnchor.constraint(equalTo: widthField.bottomAnchor, constant: 6),
-            lockAspectCheckbox.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            lockAspectButton.centerYAnchor.constraint(equalTo: wLabel.centerYAnchor),
+            lockAspectButton.leadingAnchor.constraint(equalTo: heightField.trailingAnchor, constant: 6),
+            lockAspectButton.widthAnchor.constraint(equalToConstant: 28),
+            lockAspectButton.heightAnchor.constraint(equalToConstant: 24),
 
-            scaleTitle.topAnchor.constraint(equalTo: lockAspectCheckbox.bottomAnchor, constant: 12),
-            scaleTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            scaleStack.topAnchor.constraint(equalTo: widthField.bottomAnchor, constant: 8),
+            scaleStack.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
+            scaleStack.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -18),
 
-            scaleStack.topAnchor.constraint(equalTo: scaleTitle.bottomAnchor, constant: 6),
-            scaleStack.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
-            scaleStack.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -16),
+            presetPopUp.topAnchor.constraint(equalTo: scaleStack.bottomAnchor, constant: 8),
+            presetPopUp.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
+            presetPopUp.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -18),
 
-            presetTitle.topAnchor.constraint(equalTo: scaleStack.bottomAnchor, constant: 12),
-            presetTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
-
-            presetPopUp.topAnchor.constraint(equalTo: presetTitle.bottomAnchor, constant: 6),
-            presetPopUp.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
-            presetPopUp.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -16),
-
-            formatTitle.topAnchor.constraint(equalTo: presetPopUp.bottomAnchor, constant: 12),
-            formatTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            formatTitle.topAnchor.constraint(equalTo: presetPopUp.bottomAnchor, constant: 14),
+            formatTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
 
             formatPopUp.topAnchor.constraint(equalTo: formatTitle.bottomAnchor, constant: 6),
-            formatPopUp.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
-            formatPopUp.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -16),
+            formatPopUp.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
+            formatPopUp.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -18),
 
-            qualityLabel.topAnchor.constraint(equalTo: formatPopUp.bottomAnchor, constant: 4),
-            qualityLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            qualityLabel.topAnchor.constraint(equalTo: formatPopUp.bottomAnchor, constant: 6),
+            qualityLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
 
             qualitySlider.centerYAnchor.constraint(equalTo: qualityLabel.centerYAnchor),
-            qualitySlider.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 130),
-            qualitySlider.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -16),
+            qualitySlider.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 145),
+            qualitySlider.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -18),
 
-            adjTitle.topAnchor.constraint(equalTo: qualityLabel.bottomAnchor, constant: 12),
-            adjTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            adjTitle.topAnchor.constraint(equalTo: qualityLabel.bottomAnchor, constant: 14),
+            adjTitle.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
 
-            brightLabel.topAnchor.constraint(equalTo: adjTitle.bottomAnchor, constant: 4),
-            brightLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            brightLabel.topAnchor.constraint(equalTo: adjTitle.bottomAnchor, constant: 6),
+            brightLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
+            brightLabel.widthAnchor.constraint(equalToConstant: 72),
 
             brightnessSlider.centerYAnchor.constraint(equalTo: brightLabel.centerYAnchor),
-            brightnessSlider.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 85),
-            brightnessSlider.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -16),
+            brightnessSlider.leadingAnchor.constraint(equalTo: brightLabel.trailingAnchor, constant: 4),
+            brightnessSlider.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -18),
 
             contrastLabel.topAnchor.constraint(equalTo: brightLabel.bottomAnchor, constant: 6),
-            contrastLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            contrastLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
+            contrastLabel.widthAnchor.constraint(equalToConstant: 72),
 
             contrastSlider.centerYAnchor.constraint(equalTo: contrastLabel.centerYAnchor),
-            contrastSlider.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 85),
-            contrastSlider.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -16),
+            contrastSlider.leadingAnchor.constraint(equalTo: contrastLabel.trailingAnchor, constant: 4),
+            contrastSlider.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -18),
 
-            targetInfoLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
+            targetInfoLabel.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
             targetInfoLabel.bottomAnchor.constraint(equalTo: cancelBtn.topAnchor, constant: -14),
 
-            cancelBtn.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 16),
-            cancelBtn.bottomAnchor.constraint(equalTo: rightContainer.bottomAnchor, constant: -14),
+            cancelBtn.leadingAnchor.constraint(equalTo: rightContainer.leadingAnchor, constant: 18),
+            cancelBtn.bottomAnchor.constraint(equalTo: rightContainer.bottomAnchor, constant: -16),
             cancelBtn.widthAnchor.constraint(equalToConstant: 80),
 
-            applyBtn.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -16),
-            applyBtn.bottomAnchor.constraint(equalTo: rightContainer.bottomAnchor, constant: -14),
-            applyBtn.leadingAnchor.constraint(equalTo: cancelBtn.trailingAnchor, constant: 10)
+            applyBtn.trailingAnchor.constraint(equalTo: rightContainer.trailingAnchor, constant: -18),
+            applyBtn.bottomAnchor.constraint(equalTo: rightContainer.bottomAnchor, constant: -16),
+            applyBtn.leadingAnchor.constraint(equalTo: cancelBtn.trailingAnchor, constant: 12)
         ])
 
         rootSplit.addArrangedSubview(leftContainer)
-        rootSplit.addArrangedSubview(rightContainer)
-        rootSplit.setPosition(520, ofDividerAt: 0)
+        rootSplit.addArrangedSubview(rightVisual)
+        rootSplit.setPosition(580, ofDividerAt: 0)
     }
 
-    private func makeSectionLabel(_ text: String) -> NSTextField {
+    private func makeSectionHeader(_ text: String) -> NSTextField {
         let lbl = NSTextField(labelWithString: text)
-        lbl.font = .systemFont(ofSize: 10, weight: .bold)
+        lbl.font = .systemFont(ofSize: 10, weight: .heavy)
         lbl.textColor = .secondaryLabelColor
         lbl.translatesAutoresizingMaskIntoConstraints = false
         return lbl
     }
 
-    // MARK: - Crop Actions & Updates
+    private func makePillButton(title: String, action: Selector) -> NSButton {
+        let btn = NSButton(title: title, target: self, action: action)
+        btn.bezelStyle = .recessed
+        btn.font = .systemFont(ofSize: 11, weight: .semibold)
+        return btn
+    }
 
+    @objc private func toggleAspectLock() {
+        isAspectLocked.toggle()
+        lockAspectButton.image = NSImage(
+            systemSymbolName: isAspectLocked ? "lock.fill" : "lock.open.fill",
+            accessibilityDescription: "Aspect Ratio Lock"
+        )
+    }
+
+    // MARK: - Crop Actions & Updates
     private func handleCropUpdated(_ normRect: CGRect?) {
         guard let norm = normRect else {
             cropStatusLabel.stringValue = "Crop: Full Image (Freeform)"
@@ -875,7 +906,7 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
 
         let cropW = Int(round(norm.width * originalWidth))
         let cropH = Int(round(norm.height * originalHeight))
-        cropStatusLabel.stringValue = "Crop Box: \(cropW) × \(cropH) px (Drag to adjust)"
+        cropStatusLabel.stringValue = "Crop Box: \(cropW) × \(cropH) px (Drag handles to adjust)"
 
         isUpdatingFields = true
         widthField.stringValue = "\(cropW)"
@@ -903,7 +934,6 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
     }
 
     // MARK: - Format & Quality Updates
-
     @objc private func formatSelected() {
         updateFormatSelectionUI()
         updateTargetInfo()
@@ -911,7 +941,7 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
 
     @objc private func qualitySliderChanged() {
         let q = Int(qualitySlider.doubleValue)
-        let labelDesc = q >= 85 ? "High" : (q >= 60 ? "Medium" : "Maximum Compression")
+        let labelDesc = q >= 85 ? "High Quality" : (q >= 60 ? "Balanced" : "Maximum Compression")
         qualityLabel.stringValue = "WebP Quality: \(q)% (\(labelDesc))"
     }
 
@@ -934,13 +964,12 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
     }
 
     // MARK: - Delegate & Updates
-
     public func controlTextDidChange(_ obj: Notification) {
         guard !isUpdatingFields else { return }
         guard let field = obj.object as? NSTextField else { return }
 
         isUpdatingFields = true
-        let lock = lockAspectCheckbox.state == .on
+        let lock = isAspectLocked
 
         let activeW = cropCanvasView.cropNormalizedRect.map { $0.width * originalWidth } ?? originalWidth
         let activeH = cropCanvasView.cropNormalizedRect.map { $0.height * originalHeight } ?? originalHeight
@@ -1005,7 +1034,7 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
     }
 
     @objc private func sliderChanged() {
-        // Sliders are applied during final export
+        // Real-time adjustments reflected on export
     }
 
     @objc private func rotateLeft() {
@@ -1025,7 +1054,7 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
         let h = Int(heightField.stringValue) ?? Int(originalHeight)
         let baseW = cropCanvasView.cropNormalizedRect.map { $0.width * originalWidth } ?? originalWidth
         let scalePct = Int(round((Double(w) / Double(baseW)) * 100.0))
-        targetInfoLabel.stringValue = "Target: \(w) × \(h) px (\(scalePct)% scale)"
+        targetInfoLabel.stringValue = "Target Output: \(w) × \(h) px (\(scalePct)% scale)"
     }
 
     @objc private func cancelAction() {
@@ -1074,20 +1103,20 @@ public final class ResizeEditorWindowController: NSWindowController, NSTextField
                         saturation: sat
                     )
                     await MainActor.run {
-                        let notif = NSUserNotification()
-                        notif.title = "Saved as \(targetExt.uppercased())"
-                        notif.informativeText = outURL.lastPathComponent
-                        NSUserNotificationCenter.default.deliver(notif)
-                        NSSound(named: "Glass")?.play()
+                        NotificationService.shared.notify(
+                            title: "Saved as \(targetExt.uppercased())",
+                            message: outURL.lastPathComponent,
+                            success: true
+                        )
                         NSWorkspace.shared.activateFileViewerSelecting([outURL])
                     }
                 } catch {
                     await MainActor.run {
-                        let notif = NSUserNotification()
-                        notif.title = "Process Failed"
-                        notif.informativeText = error.localizedDescription
-                        NSUserNotificationCenter.default.deliver(notif)
-                        NSSound(named: "Basso")?.play()
+                        NotificationService.shared.notify(
+                            title: "Process Failed",
+                            message: error.localizedDescription,
+                            success: false
+                        )
                     }
                 }
             }

@@ -291,18 +291,10 @@ public final class DragMonitorService {
     }
 
     private func showSuccessNotification(title: String, path: String) {
-        let notif = NSUserNotification()
-        notif.title = title
-        notif.informativeText = URL(fileURLWithPath: path).lastPathComponent
-        NSUserNotificationCenter.default.deliver(notif)
-        NSSound(named: "Glass")?.play()
+        NotificationService.shared.notify(title: title, message: URL(fileURLWithPath: path).lastPathComponent, success: true)
     }
 
     private func showErrorNotification(title: String, error: String) {
-        let notif = NSUserNotification()
-        notif.title = title
-        notif.informativeText = error
-        NSUserNotificationCenter.default.deliver(notif)
-        NSSound(named: "Basso")?.play()
+        NotificationService.shared.notify(title: title, message: error, success: false)
     }
 }

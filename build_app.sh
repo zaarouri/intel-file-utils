@@ -1,18 +1,18 @@
 #!/bin/bash
 set -e
 
-echo "Building floating-utils-intel-mac for Intel Mac (x86_64)..."
+echo "Building intel-file-utils for Intel Mac (x86_64)..."
 swift build -c release
 
-APP_NAME="floating-utils-intel-mac.app"
+APP_NAME="Intel File Utils.app"
 CONTENTS_DIR="${APP_NAME}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 
-rm -rf "${APP_NAME}"
+rm -rf "${APP_NAME}" "intel-file-utils.app" "floating-utils-intel-mac.app"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
-cp .build/release/floating-utils-intel-mac "${MACOS_DIR}/floating-utils-intel-mac"
+cp .build/release/intel-file-utils "${MACOS_DIR}/intel-file-utils"
 if [ -f "AppIcon.icns" ]; then
     cp AppIcon.icns "${RESOURCES_DIR}/AppIcon.icns"
 fi
@@ -26,13 +26,13 @@ cat << 'PLIST' > "${CONTENTS_DIR}/Info.plist"
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.local.floating-utils-intel-mac</string>
+    <string>io.github.zaarouri.intel-file-utils</string>
     <key>CFBundleName</key>
-    <string>floating-utils-intel-mac</string>
+    <string>Intel File Utils</string>
     <key>CFBundleDisplayName</key>
-    <string>floating-utils-intel-mac</string>
+    <string>Intel File Utils</string>
     <key>CFBundleExecutable</key>
-    <string>floating-utils-intel-mac</string>
+    <string>intel-file-utils</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
@@ -48,12 +48,15 @@ cat << 'PLIST' > "${CONTENTS_DIR}/Info.plist"
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>
-    <string>floating-utils-intel-mac detects selected files during drag gestures.</string>
+    <string>Intel File Utils observes global drag gestures to provide instant zero-click conversions in Finder.</string>
 </dict>
 </plist>
 PLIST
 
+# Create symlink for lowercase CLI convenience
+ln -sfn "${APP_NAME}" "intel-file-utils.app"
+
 echo "Codesigning app..."
 codesign -s - --force --deep "${APP_NAME}"
 
-echo "floating-utils-intel-mac.app packaged successfully!"
+echo "Intel File Utils.app packaged successfully!"

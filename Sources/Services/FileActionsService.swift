@@ -20,14 +20,14 @@ public final class FileActionsService: @unchecked Sendable {
             let pb = NSPasteboard.general
             pb.clearContents()
             pb.writeObjects(urls as [NSURL])
-            showNotification(title: "Copied to Clipboard", message: "\(urls.count) item(s) ready to paste.")
+            NotificationService.shared.notify(title: "Copied to Clipboard", message: "\(urls.count) item(s) ready to paste.")
 
         case "copyPath":
             let pb = NSPasteboard.general
             pb.clearContents()
             let paths = urls.map { $0.path }.joined(separator: "\n")
             pb.setString(paths, forType: .string)
-            showNotification(title: "Path Copied", message: urls.count == 1 ? urls[0].path : "\(urls.count) paths copied.")
+            NotificationService.shared.notify(title: "Path Copied", message: urls.count == 1 ? urls[0].path : "\(urls.count) paths copied.")
 
         case "openTerminal":
             let targetDir = urls[0].hasDirectoryPath ? urls[0] : urls[0].deletingLastPathComponent()
@@ -49,25 +49,19 @@ public final class FileActionsService: @unchecked Sendable {
                     let destFile = dest.appendingPathComponent(u.lastPathComponent)
                     try? FileManager.default.moveItem(at: u, to: destFile)
                 }
-                showNotification(title: "Moved", message: "Moved \(urls.count) item(s) to \(dest.lastPathComponent).")
+                NotificationService.shared.notify(title: "Moved", message: "Moved \(urls.count) item(s) to \(dest.lastPathComponent).")
             }
 
         case "float":
-            NotificationCenter.default.post(name: .tangerineShowFloatShelf, object: urls)
+            NotificationCenter.default.post(name: .intelFileUtilsShowFloatShelf, object: urls)
 
         default:
             break
         }
     }
-
-    private func showNotification(title: String, message: String) {
-        let notif = NSUserNotification()
-        notif.title = title
-        notif.informativeText = message
-        NSUserNotificationCenter.default.deliver(notif)
-    }
 }
 
 extension Notification.Name {
-    public static let tangerineShowFloatShelf = Notification.Name("tangerineShowFloatShelf")
+    public static let intelFileUtilsShowFloatShelf = Notification.Name("intelFileUtilsShowFloatShelf")
+    public static let tangerineShowFloatShelf = intelFileUtilsShowFloatShelf // Backward compatibility
 }
